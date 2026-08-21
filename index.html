@@ -1,0 +1,1295 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Simulador de Lupa CVDentus</title>
+<meta name="description" content="Prove a lupa odontológica CVDentus ao vivo pela câmera — motor Jeeliz FaceFilter (open source).">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+<!-- NOTE: a `defer` pass on these 6 tags was tried and reverted — it
+     unblocked first paint as intended, but the CDN-hosted Three.js scripts
+     sometimes finished executing AFTER this page's own DOMContentLoaded
+     fired (observed as a real "THREE is not defined" error, not a false
+     alarm), racing the inline app script below. Self-hosting the Three.js
+     files instead of loading them from cdn.jsdelivr.net would remove that
+     race and make `defer` safe to reintroduce — see /impeccable optimize. -->
+<!-- Jeeliz FaceFilter (Apache 2.0) — self-hosted copy, see jeeliz/ folder -->
+<script src="jeeliz/jeelizFaceFilter.js"></script>
+<!-- Three.js r112 — the exact version JeelizThreeHelper.js was built against -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.112.0/build/three.js"></script>
+<script src="jeeliz/helpers/JeelizThreeHelper.js"></script>
+<script src="jeeliz/helpers/JeelizResizer.js"></script>
+<!-- GLTFLoader compatible with three r112 -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.112.0/examples/js/loaders/GLTFLoader.js"></script>
+<!-- OrbitControls (same r112) — drives the 360° product viewer below the camera -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.112.0/examples/js/controls/OrbitControls.js"></script>
+
+<style>
+  /* Minimalist identity: flat white cards floating on a plain light-gray
+     canvas, soft diffuse shadows instead of borders/glass, and delicate
+     (lighter-weight, more letter-spaced) type — in the spirit of the clean
+     supplement-app reference the user shared. The camera feed, 3D canvas and
+     the chips that float on top of THEM (stage-empty, viewer/mag overlays,
+     the calibration toast) stay opaque dark on purpose — they sit over live
+     video or a 3D render whose own colors are unpredictable, so a solid dark
+     chip with white text is what stays legible there regardless of what the
+     frame behind them looks like. */
+  :root{
+    --royal:#2f5fc4; --royal-soft:#eaf1fc; --royal-soft-brd:rgba(47,95,196,.22);
+    --bg:#f4f5f7; --ink:#1c2130; --ink-soft:#3d4457; --ink-faint:#4a5266;
+    --white:#ffffff;
+    --card-bg:#ffffff; --card-border:rgba(20,24,32,.06);
+    --shadow-sm:0 1px 2px rgba(16,24,40,.03);
+    --shadow-md:0 14px 34px rgba(16,24,40,.07);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    min-height:100vh; font-family:"Montserrat",system-ui,sans-serif; background:var(--bg);
+    color:var(--ink); display:flex; flex-direction:column; align-items:center; padding:28px 16px 60px;
+  }
+  /* ---- hero: single big stacked "product card" — in the spirit of the
+     supplement-app reference the user shared (huge rounded card carrying its
+     own soft gradient, centered tight-tracked product name inset in the
+     card, small pill badges, photo inset, black pill CTA) — reworked for our
+     palette and without inventing new marketing copy: same words as before,
+     just given the card-first visual language the reference uses. */
+  header.hero{ width:100%; max-width:640px; margin-bottom:32px; }
+  .hero-topbar{ display:flex; align-items:center; justify-content:center; padding:6px 4px 20px; }
+  .hero-topbar .hero-logo{ height:28px; }
+
+  /* Video-as-background hero: the loop covers the whole card (position:
+     absolute, behind everything), a dark scrim sits above it for legibility,
+     and the title/subtitle/CTA float centered on top of both — instead of
+     the card being a light panel with the video as a separate top block. */
+  .hero-card{
+    position:relative; text-align:center; border-radius:40px; overflow:hidden;
+    aspect-ratio:3/4; background:#14161c;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:32px 26px; box-shadow:var(--shadow-sm), var(--shadow-md);
+  }
+  .hero-card-media{ position:absolute; inset:0; z-index:0; background:#14161c; }
+  .hero-card-media img, .hero-card-media video{ width:100%; height:100%; object-fit:cover; display:block; }
+  .hero-card-media .hero-media-fallback{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    text-align:center; padding:22px; color:rgba(255,255,255,.7); font-size:12.5px; font-weight:500; line-height:1.5;
+    background:linear-gradient(160deg, #23262f, #14161c);
+  }
+  .hero-card-scrim{
+    position:absolute; inset:0; z-index:1;
+    background:linear-gradient(180deg, rgba(10,12,20,.30) 0%, rgba(8,10,18,.62) 100%);
+  }
+  .hero-card-content{ position:relative; z-index:2; display:flex; flex-direction:column; align-items:center; }
+  /* Solid dark chip over the video, per the Solid-Chip Exception — a WCAG
+     2.2.2 requirement (any auto-playing loop past 5s needs a user-operable
+     pause), not just a nice-to-have. */
+  .hero-video-toggle{
+    position:absolute; top:16px; right:16px; z-index:3;
+    width:44px; height:44px; border-radius:50%; border:none; cursor:pointer;
+    background:rgba(13,19,32,.6); color:#fff; font-size:14px; line-height:1;
+    display:flex; align-items:center; justify-content:center; padding:0;
+    transition:background .15s ease;
+  }
+  .hero-video-toggle:hover{ background:rgba(13,19,32,.8); }
+  .hero-card-title{
+    font-weight:700; font-size:clamp(26px,6.5vw,36px); line-height:1.08; letter-spacing:-.3px;
+    margin:0 0 10px; color:#fff; text-shadow:0 2px 20px rgba(0,0,0,.4);
+  }
+  .hero-card-title span{ color:#fff; }
+  .hero-card-sub{
+    font-weight:400; font-size:14.5px; color:rgba(255,255,255,.88); line-height:1.55;
+    max-width:360px; margin:0 auto 26px; letter-spacing:.1px; text-shadow:0 1px 12px rgba(0,0,0,.35);
+  }
+  .btn-black-pill{
+    display:inline-flex; align-items:center; gap:8px; background:#fff; color:#14161c;
+    font-family:inherit; font-weight:600; font-size:13.5px; letter-spacing:.2px;
+    padding:13px 26px; border-radius:999px; text-decoration:none; cursor:pointer;
+    box-shadow:0 12px 26px rgba(0,0,0,.35); transition:filter .15s ease, transform .15s ease;
+  }
+  .btn-black-pill:hover{ filter:brightness(.94); }
+  .btn-black-pill:active{ transform:scale(.97); }
+
+  main{ width:100%; max-width:820px; }
+  .card{
+    background:var(--card-bg); border:none; border-radius:26px; padding:24px; margin-bottom:20px;
+    box-shadow:var(--shadow-sm), var(--shadow-md);
+  }
+  .step-label{ display:flex; align-items:center; gap:10px; font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:1.4px; color:var(--ink-soft); margin:0 0 14px; }
+  .step-num{ width:23px;height:23px;border-radius:50%; background:var(--royal); color:#fff; display:flex;align-items:center;justify-content:center; font-size:11.5px;font-weight:700; flex-shrink:0; }
+
+  /* flex-wrap instead of a hardcoded column count: adapts cleanly whenever a
+     model is added/removed instead of needing a new breakpoint each time —
+     and unlike grid's auto-fit, an incomplete last row centers itself
+     instead of hugging the left edge with dangling empty columns. */
+  .models{ display:flex; flex-wrap:wrap; justify-content:center; gap:12px; max-width:760px; margin:0 auto; }
+  .model-btn{
+    background:var(--card-bg); border:1.5px solid transparent; border-radius:18px;
+    padding:14px 10px 16px; cursor:pointer; color:var(--ink); font-family:inherit;
+    display:flex; flex-direction:column; align-items:center; gap:8px; box-shadow:var(--shadow-sm), 0 6px 18px rgba(16,24,40,.05);
+    transition:border-color .15s ease, background .15s ease, transform .15s ease, box-shadow .15s ease;
+    flex:0 1 150px; min-width:130px;
+  }
+  .model-btn:hover{ transform:translateY(-2px); box-shadow:var(--shadow-sm), 0 10px 24px rgba(16,24,40,.08); }
+  .model-btn.active{ border-color:var(--royal); background:var(--royal-soft); }
+  .model-btn img{ width:100%; max-width:140px; aspect-ratio:16/9; object-fit:contain; filter:drop-shadow(0 6px 10px rgba(16,24,40,0.1)); }
+  .model-btn .name{ font-weight:600; font-size:14px; letter-spacing:.1px; }
+  .model-btn .tag{ font-weight:500; font-size:10px; letter-spacing:.7px; text-transform:uppercase; color:var(--ink-faint); }
+
+  .stage-wrap{ position:relative; width:100%; aspect-ratio:4/3; max-height:min(72vh,620px); margin:0 auto; border-radius:20px; overflow:hidden; background:#000; box-shadow:var(--shadow-sm); }
+  #jeeFaceFilterCanvas{ width:100%; height:100%; display:block; transform:scaleX(-1); } /* mirror like a mirror */
+
+  .stage-empty{
+    position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:16px; text-align:center; padding:24px; background:linear-gradient(180deg, rgba(69,96,143,.35), rgba(13,19,32,.55));
+    pointer-events:none;
+  }
+  .stage-empty svg{ width:52px;height:52px;opacity:.85; }
+  .stage-empty p{ margin:0; font-size:14px; color:rgba(255,255,255,.75); max-width:340px; line-height:1.5; }
+
+  /* Scanning state: a face lock has been seen but hasn't held long enough yet
+     (see calibration hold-timer in JS) — a viewfinder-style pulse instead of
+     the plain "start camera" icon, so the wait reads as "aligning tracking"
+     rather than "nothing is happening". */
+  .stage-empty.scanning{ background:linear-gradient(180deg, rgba(47,95,196,.22), rgba(13,19,32,.5)); }
+  .scan-frame{ width:84px; height:84px; position:relative; }
+  .scan-frame span{
+    position:absolute; width:22px; height:22px; border-color:var(--royal); border-style:solid; border-width:0;
+    animation:scanPulse 1.4s ease-in-out infinite;
+  }
+  .scan-frame span:nth-child(1){ top:0; left:0; border-top-width:3px; border-left-width:3px; border-radius:6px 0 0 0; }
+  .scan-frame span:nth-child(2){ top:0; right:0; border-top-width:3px; border-right-width:3px; border-radius:0 6px 0 0; }
+  .scan-frame span:nth-child(3){ bottom:0; left:0; border-bottom-width:3px; border-left-width:3px; border-radius:0 0 0 6px; }
+  .scan-frame span:nth-child(4){ bottom:0; right:0; border-bottom-width:3px; border-right-width:3px; border-radius:0 0 6px 0; }
+  @keyframes scanPulse{ 0%,100%{ opacity:.45; transform:scale(0.94); } 50%{ opacity:1; transform:scale(1); } }
+  /* The "scanning" state still needs to read as active — just without the
+     infinite pulse — so this holds the brackets at full opacity/scale
+     instead of a blanket animation:none that would leave them looking
+     inactive/half-faded. */
+  @media (prefers-reduced-motion: reduce){
+    .scan-frame span{ animation:none; opacity:1; transform:scale(1); }
+  }
+
+  /* Brief confirmation toast, fired once tracking locks in for the first
+     time — points at the fine-tune sliders so the connection ("tracking got
+     you close, adjust from here if needed") is obvious in the moment. */
+  .calib-toast{
+    position:fixed; left:50%; bottom:28px; transform:translateX(-50%) translateY(12px);
+    background:rgba(20,28,46,.96); border:1px solid rgba(47,95,196,.5); color:#fff;
+    font-size:13px; font-weight:600; padding:11px 18px; border-radius:13px; box-shadow:0 8px 24px rgba(0,0,0,.35);
+    opacity:0; pointer-events:none; transition:opacity .35s ease, transform .35s ease; z-index:50; max-width:88vw; text-align:center;
+  }
+  .calib-toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+  .calib-toast b{ color:#5580d6; }
+
+  .controls{ display:flex; flex-wrap:wrap; gap:10px; justify-content:center; margin-top:16px; }
+  button.btn{
+    font-family:inherit; font-weight:600; font-size:13px; letter-spacing:.2px; padding:12px 22px; border-radius:999px; border:none; cursor:pointer;
+    display:inline-flex; align-items:center; gap:8px; transition:filter .15s ease, transform .15s ease, background .15s ease, box-shadow .15s ease;
+  }
+  button.btn:active{ transform:scale(.97); }
+  .btn-primary{ background:var(--royal); color:#fff; box-shadow:0 8px 20px rgba(47,95,196,.22); }
+  .btn-primary:hover{ filter:brightness(1.1); }
+  /* .btn.btn-ghost (not just .btn-ghost): button.btn's own `border:none` sits
+     at higher specificity (element+class) than a single .btn-ghost class,
+     so it silently won the border property regardless of source order —
+     the ghost buttons never actually had a visible border in either theme,
+     it just didn't show because white text was legible on its own against
+     the old dark page. Two classes beats element+class keeps the fix intact
+     even though the visible separation now comes from shadow, not border. */
+  .btn.btn-ghost{ background:#fff; color:var(--ink); box-shadow:var(--shadow-sm), 0 6px 16px rgba(16,24,40,.06); }
+  .btn.btn-ghost:hover{ color:var(--royal); box-shadow:var(--shadow-sm), 0 8px 20px rgba(47,95,196,.14); }
+  button.btn:disabled{ opacity:.45; cursor:not-allowed; }
+
+  /* Manual adjustment is called out twice on purpose: this quiet line is
+     always visible right under the camera controls (no click needed to
+     discover it exists), and the "Ajuste fino" toggle itself below is styled
+     as an obvious pill instead of a plain muted line — someone whose lupa
+     doesn't land perfectly from the automatic tracking should never have to
+     go hunting for the fix. */
+  .finetune-hint{
+    display:flex; align-items:flex-start; gap:9px; margin-top:16px;
+    background:var(--royal-soft); color:var(--royal);
+    font-size:12.5px; font-weight:500; line-height:1.55; padding:12px 15px; border-radius:13px;
+  }
+  .finetune-hint svg{ width:16px; height:16px; flex-shrink:0; margin-top:1px; }
+  .finetune-hint strong{ font-weight:700; }
+
+  details.finetune{ margin-top:10px; }
+  details.finetune summary{
+    cursor:pointer; font-weight:600; font-size:12.5px; letter-spacing:.2px; list-style:none;
+    color:var(--royal); background:var(--royal-soft); border:none;
+    padding:9px 16px; border-radius:999px; display:inline-flex; align-items:center; gap:7px;
+    transition:background .15s ease;
+  }
+  details.finetune summary::-webkit-details-marker{ display:none; }
+  details.finetune summary::after{ content:"▾"; font-size:10px; transition:transform .2s ease; }
+  details.finetune[open] summary::after{ transform:rotate(180deg); }
+  details.finetune summary:hover{ background:#dde9fb; }
+  .sliders{ display:grid; grid-template-columns:1fr; gap:14px; margin-top:16px; }
+  .slider-row{ display:flex; align-items:center; gap:12px; }
+  .slider-row label{ font-size:12.5px; font-weight:500; letter-spacing:.15px; width:110px; color:var(--ink-soft); flex-shrink:0; }
+  .slider-row input[type=range]{ flex:1; accent-color:var(--royal); }
+  .slider-row .val{
+    width:48px; text-align:right; font-size:13px; font-weight:400; letter-spacing:.2px;
+    color:var(--ink-soft); font-family:inherit; font-variant-numeric:tabular-nums;
+  }
+  label.chk{ display:flex; align-items:center; gap:8px; font-size:12.5px; font-weight:500; color:var(--ink-soft); cursor:pointer; margin-top:12px; }
+
+  /* ---- 360° product viewer ---- */
+  .viewer-wrap{
+    position:relative; width:100%; aspect-ratio:16/10; max-height:min(60vh,440px);
+    border-radius:20px; overflow:hidden; box-shadow:var(--shadow-sm);
+    background:radial-gradient(ellipse at 50% 38%, rgba(47,95,196,.20), rgba(13,19,32,.72) 68%);
+    cursor:grab;
+    /* pan-y (not none): a vertical swipe still scrolls the page, so the viewer
+       never traps the finger on mobile. Horizontal drag reaches OrbitControls,
+       which is the axis that matters for a 360° spin. */
+    touch-action:pan-y;
+  }
+  .viewer-wrap.dragging{ cursor:grabbing; }
+  #viewerCanvas{ width:100%; height:100%; display:block; }
+  .viewer-overlay{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    text-align:center; padding:24px; pointer-events:none;
+    background:linear-gradient(180deg, rgba(69,96,143,.30), rgba(13,19,32,.55));
+  }
+  .viewer-overlay p{ margin:0; font-size:13.5px; font-weight:600; color:rgba(255,255,255,.82); line-height:1.5; }
+  .viewer-tag{
+    position:absolute; top:12px; left:12px; display:flex; align-items:baseline; gap:7px;
+    background:rgba(13,19,32,.6); border:1px solid rgba(255,255,255,.12);
+    padding:6px 12px; border-radius:999px; pointer-events:none;
+  }
+  .viewer-tag b{ font-size:12.5px; font-weight:800; }
+  .viewer-tag span{ font-size:10px; font-weight:600; letter-spacing:.5px; text-transform:uppercase; color:rgba(255,255,255,.55); }
+  .viewer-hint{
+    position:absolute; left:50%; bottom:12px; transform:translateX(-50%); white-space:nowrap;
+    font-size:10.5px; font-weight:600; letter-spacing:.4px; color:rgba(255,255,255,.55);
+    background:rgba(13,19,32,.6); border:1px solid rgba(255,255,255,.1);
+    padding:5px 13px; border-radius:999px; pointer-events:none;
+    transition:opacity .3s ease;
+  }
+
+  .card-note{ font-size:12.5px; font-weight:500; color:var(--ink-faint); line-height:1.55; margin:-6px 0 16px; }
+
+  /* ---- magnification simulator (separate app, embedded) ---- */
+  .mag-wrap{
+    position:relative; width:100%; height:min(80vh,700px);
+    border-radius:20px; overflow:hidden; box-shadow:var(--shadow-sm);
+    background:#000;
+  }
+  #magFrame{ width:100%; height:100%; border:0; display:block; }
+  .mag-overlay{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    text-align:center; padding:24px; cursor:pointer;
+    background:linear-gradient(180deg, rgba(69,96,143,.30), rgba(13,19,32,.75));
+  }
+  .mag-overlay p{ margin:0; font-size:13.5px; font-weight:600; color:rgba(255,255,255,.85); max-width:320px; line-height:1.5; }
+
+  /* ---- advantages: supporting value-prop content between the hero and the
+     functional flow — same flat-card language as everything else, just
+     without a numbered step circle since it isn't part of the sequence. */
+  .section-kicker{ font-weight:600; font-size:11.5px; text-transform:uppercase; letter-spacing:1.4px; color:var(--royal); margin-bottom:8px; }
+  .section-title{ font-weight:700; font-size:21px; letter-spacing:-.2px; color:var(--ink); margin:0 0 22px; text-align:center; }
+  /* flex-wrap (not grid's auto-fit): an incomplete last row centers itself
+     as a group instead of its item(s) hugging the left edge under column 1 —
+     same reasoning as .models below. */
+  .advantages-grid{ display:flex; flex-wrap:wrap; justify-content:center; gap:26px 20px; }
+  .advantage-item{
+    display:flex; flex-direction:column; align-items:center; text-align:center; gap:10px;
+    flex:0 1 220px; min-width:200px;
+  }
+  .advantage-icon{
+    width:42px; height:42px; border-radius:13px; background:var(--royal-soft); flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .advantage-icon svg{ width:22px; height:22px; stroke:var(--royal); }
+  .advantage-title{ font-weight:600; font-size:14.5px; color:var(--ink); margin:0 0 4px; }
+  .advantage-desc{ font-size:12.5px; font-weight:400; color:var(--ink-soft); line-height:1.55; margin:0; }
+
+  footer{ max-width:600px; width:100%; text-align:center; margin-top:34px; }
+  .footer-follow{ font-size:12.5px; font-weight:600; letter-spacing:.3px; color:var(--ink-soft); margin:0 0 14px; }
+  .footer-links{ display:flex; flex-wrap:wrap; justify-content:center; gap:10px; }
+  .footer-link-btn{
+    display:inline-flex; align-items:center; gap:6px; background:#fff; color:var(--ink);
+    font-family:inherit; font-weight:600; font-size:12.5px; letter-spacing:.1px;
+    padding:10px 18px; border-radius:999px; text-decoration:none;
+    box-shadow:var(--shadow-sm), 0 6px 16px rgba(16,24,40,.06);
+    transition:transform .15s ease, box-shadow .15s ease;
+  }
+  .footer-link-btn svg{ width:16px; height:16px; flex-shrink:0; display:block; }
+  .footer-link-btn:hover{ transform:translateY(-2px); box-shadow:var(--shadow-sm), 0 10px 24px rgba(16,24,40,.08); }
+  .footer-catalog-btn{
+    display:inline-flex; align-items:center; gap:8px; margin-top:16px; background:var(--royal); color:#fff;
+    font-family:inherit; font-weight:600; font-size:12.5px; letter-spacing:.1px;
+    padding:11px 22px; border-radius:999px; text-decoration:none;
+    box-shadow:0 10px 22px rgba(47,95,196,.28); transition:filter .15s ease, transform .15s ease;
+  }
+  .footer-catalog-btn:hover{ filter:brightness(1.1); transform:translateY(-2px); }
+  .footer-catalog-btn svg{ width:17px; height:17px; flex-shrink:0; stroke:#fff; }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="hero-topbar">
+    <img class="hero-logo" src="assets/logo-cvdentus-color.png" alt="CVDentus">
+  </div>
+  <div class="hero-card">
+    <div class="hero-card-media">
+      <video id="heroVideo" src="assets/hero-lupa-video.mp4" autoplay loop muted playsinline aria-hidden="true"
+        poster="assets/hero-lupa-perfil.png"
+        onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"></video>
+      <div class="hero-media-fallback" style="display:none;">Vídeo de destaque ainda não adicionado — salve o arquivo em assets/hero-lupa-video.mp4</div>
+    </div>
+    <div class="hero-card-scrim"></div>
+    <button type="button" class="hero-video-toggle" id="heroVideoToggle" aria-pressed="false" aria-label="Pausar vídeo de fundo">⏸</button>
+    <div class="hero-card-content">
+      <h1 class="hero-card-title">Simulador de <span>Lupa CVDentus</span></h1>
+      <p class="hero-card-sub">Câmera em tempo real, Simulador de Magnificação e visualização 3D dos nossos modelos.</p>
+      <a href="#stageWrap" class="btn-black-pill">Simular agora <span aria-hidden="true">→</span></a>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="card">
+    <h2 class="section-title">Vantagens de usar a lupa</h2>
+    <div class="advantages-grid">
+      <div class="advantage-item">
+        <span class="advantage-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /><path d="M5 20l5 -.5l1 -2" /><path d="M18 20v-5h-5.5l2.5 -6.5l-5.5 1l1.5 2" /></svg></span>
+        <div>
+          <p class="advantage-title">Ergonomia</p>
+          <p class="advantage-desc">Menos inclinação do pescoço e da coluna: a lupa mantém sua postura ereta durante todo o atendimento.</p>
+        </div>
+      </div>
+      <div class="advantage-item">
+        <span class="advantage-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" /><path d="M21 12c-2.4 4 -5.4 6 -9 6c-3.6 0 -6.6 -2 -9 -6c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6" /></svg></span>
+        <div>
+          <p class="advantage-title">Preservação da visão</p>
+          <p class="advantage-desc">Reduz o esforço ocular e as dores de cabeça, mesmo em jornadas longas de consultório.</p>
+        </div>
+      </div>
+      <div class="advantage-item">
+        <span class="advantage-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /><path d="M7 12a5 5 0 1 0 10 0a5 5 0 1 0 -10 0" /><path d="M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0" /></svg></span>
+        <div>
+          <p class="advantage-title">Diagnóstico preciso</p>
+          <p class="advantage-desc">Amplia o campo de visão dos detalhes clínicos, reduzindo erros de diagnóstico e elevando a qualidade do tratamento.</p>
+        </div>
+      </div>
+      <div class="advantage-item">
+        <span class="advantage-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 12.572l-7.5 7.428l-7.5 -7.428a5 5 0 1 1 7.5 -6.566a5 5 0 1 1 7.5 6.572" /><path d="M12 6l-3.293 3.293a1 1 0 0 0 0 1.414l.543 .543c.69 .69 1.81 .69 2.5 0l1 -1a3.182 3.182 0 0 1 4.5 0l2.25 2.25" /><path d="M12.5 15.5l2 2" /><path d="M15 13l2 2" /></svg></span>
+        <div>
+          <p class="advantage-title">Imagem profissional</p>
+          <p class="advantage-desc">Reforça sua autoridade técnica e a confiança do paciente no seu atendimento.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 class="step-label"><span class="step-num">1</span> Escolha o modelo</h2>
+    <div class="models" id="models"></div>
+  </div>
+
+  <div class="card">
+    <h2 class="step-label"><span class="step-num">2</span> Ative sua câmera</h2>
+
+    <div class="stage-wrap" id="stageWrap">
+      <canvas id="jeeFaceFilterCanvas" width="640" height="480" aria-label="Pré-visualização ao vivo da câmera com a lupa CVDentus aplicada ao rosto" role="img"></canvas>
+      <div class="stage-empty" id="stageEmpty">
+        <svg id="stageEmptyIcon" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+        <div class="scan-frame" id="scanFrame" style="display:none;"><span></span><span></span><span></span><span></span></div>
+        <p id="stageEmptyText">Clique em "Ativar câmera" — o processamento é todo local, no seu navegador.</p>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="btn btn-primary" id="btnStart">Ativar câmera</button>
+      <button class="btn btn-ghost" id="btnSnap" style="display:none;">📸 Salvar foto</button>
+      <button class="btn btn-ghost" id="btnStop" style="display:none;">⏻ Parar câmera</button>
+    </div>
+
+    <div class="finetune-hint">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      <span>A lupa se posiciona sozinha pelo rastreamento, mas se o tamanho ou o encaixe não ficarem perfeitos, <strong>toque em "Ajuste fino" abaixo</strong> para corrigir manualmente a qualquer momento.</span>
+    </div>
+
+    <details class="finetune">
+      <summary>⚙ Ajuste fino — tamanho e posição</summary>
+      <div class="sliders">
+        <div class="slider-row"><label for="rScale">Tamanho</label><input type="range" id="rScale" min="40" max="300" value="178"><span class="val" id="vScale">178%</span></div>
+        <div class="slider-row"><label for="rY">Altura (Y)</label><input type="range" id="rY" min="-50" max="50" value="31"><span class="val" id="vY">31</span></div>
+        <div class="slider-row"><label for="rZ">Profund. (Z)</label><input type="range" id="rZ" min="-50" max="50" value="29"><span class="val" id="vZ">29</span></div>
+        <div class="slider-row"><label for="rX">Lateral (X)</label><input type="range" id="rX" min="-50" max="50" value="-7"><span class="val" id="vX">-7</span></div>
+      </div>
+    </details>
+  </div>
+
+  <div class="card">
+    <h2 class="step-label"><span class="step-num">3</span> Simule a magnificação da lupa</h2>
+    <p class="card-note">Outro simulador CVDentus: veja em tempo real, pela câmera traseira do seu aparelho, como a visão fica com o aumento óptico da lupa — 2,5×, campo e profundidade de foco reais.</p>
+
+    <div class="mag-wrap" id="magWrap">
+      <iframe
+        id="magFrame"
+        title="Simulador de magnificação CVDentus"
+        src="about:blank"
+        data-src="https://kahuesouza.github.io/simulador-magnificacao-cvdentus/"
+        allow="camera"
+        loading="lazy"
+        referrerpolicy="no-referrer-when-downgrade"
+      ></iframe>
+      <div class="mag-overlay" id="magOverlay">
+        <p>Toque para carregar o simulador de magnificação (pede acesso à câmera).</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 class="step-label"><span class="step-num">4</span> Veja a lupa por todos os ângulos</h2>
+
+    <div class="viewer-wrap" id="viewerWrap">
+      <canvas id="viewerCanvas" tabindex="0" aria-label="Visualizador 3D da lupa selecionada — use as setas do teclado para girar" role="img"></canvas>
+      <div class="viewer-tag"><b id="viewerName">—</b><span id="viewerTag"></span></div>
+      <div class="viewer-overlay" id="viewerOverlay">
+        <p id="viewerStatus">Toque para carregar o modelo 3D.</p>
+      </div>
+      <div class="viewer-hint" id="viewerHint">Arraste para girar · role para aproximar</div>
+    </div>
+
+    <div class="controls">
+      <button class="btn btn-ghost" id="btnSpin">⏸ Pausar giro</button>
+      <button class="btn btn-ghost" id="btnResetView">↺ Vista inicial</button>
+    </div>
+  </div>
+</main>
+
+<div class="calib-toast" id="calibToast">✓ Rastreio alinhado — se precisar, refine em <b>"Ajuste fino"</b>.</div>
+
+<footer>
+  <p class="footer-follow">Acompanhe nossas redes</p>
+  <div class="footer-links">
+    <a href="https://www.instagram.com/cvdentus/" target="_blank" rel="noopener" class="footer-link-btn">
+      <svg viewBox="84.002 105.161 47.427 47.427" aria-hidden="true"><radialGradient id="ig-grad" cx="82.8156" cy="152.7458" r="87.6878" gradientUnits="userSpaceOnUse"><stop offset="0" style="stop-color:#F5EC53"/><stop offset="0.2412" style="stop-color:#E48244"/><stop offset="0.3974" style="stop-color:#D15767"/><stop offset="0.4888" style="stop-color:#C84278"/><stop offset="1" style="stop-color:#192CFA"/></radialGradient><path style="fill:url(#ig-grad);" d="M122.96,152.588H92.471c-4.677,0-8.469-3.792-8.469-8.469V113.63c0-4.677,3.792-8.469,8.469-8.469h30.489c4.677,0,8.469,3.792,8.469,8.469v30.489C131.429,148.797,127.638,152.588,122.96,152.588z"/><path style="fill:#FFFFFF;" d="M107.716,118.215c3.472,0,3.883,0.013,5.254,0.076c1.268,0.058,1.956,0.27,2.414,0.448c0.607,0.236,1.04,0.517,1.495,0.973c0.455,0.455,0.737,0.888,0.973,1.495c0.178,0.458,0.39,1.147,0.448,2.415c0.062,1.371,0.076,1.782,0.076,5.254c0,3.472-0.013,3.883-0.076,5.254c-0.058,1.268-0.27,1.956-0.448,2.414c-0.236,0.607-0.518,1.04-0.973,1.495c-0.455,0.455-0.888,0.737-1.495,0.972c-0.458,0.178-1.147,0.39-2.414,0.448c-1.371,0.062-1.782,0.076-5.254,0.076s-3.883-0.013-5.254-0.076c-1.268-0.058-1.956-0.27-2.414-0.448c-0.607-0.236-1.04-0.518-1.495-0.972c-0.455-0.455-0.737-0.888-0.973-1.495c-0.178-0.458-0.39-1.146-0.448-2.414c-0.062-1.371-0.076-1.782-0.076-5.254c0-3.472,0.013-3.883,0.076-5.254c0.058-1.268,0.27-1.956,0.448-2.415c0.236-0.607,0.518-1.04,0.973-1.495c0.455-0.455,0.888-0.737,1.495-0.973c0.458-0.178,1.147-0.39,2.414-0.448C103.833,118.229,104.244,118.215,107.716,118.215 M107.716,115.873c-3.531,0-3.974,0.015-5.361,0.078c-1.384,0.063-2.329,0.283-3.156,0.604c-0.855,0.332-1.58,0.777-2.303,1.5c-0.723,0.723-1.167,1.448-1.499,2.303c-0.322,0.827-0.541,1.772-0.604,3.156c-0.063,1.387-0.078,1.83-0.078,5.361c0,3.531,0.015,3.974,0.078,5.361c0.063,1.384,0.283,2.329,0.604,3.156c0.332,0.855,0.777,1.58,1.499,2.303c0.723,0.723,1.448,1.167,2.303,1.5c0.827,0.321,1.772,0.541,3.156,0.604c1.387,0.063,1.83,0.078,5.361,0.078c3.531,0,3.974-0.015,5.361-0.078c1.384-0.063,2.329-0.283,3.156-0.604c0.855-0.332,1.58-0.777,2.303-1.5c0.723-0.723,1.167-1.448,1.5-2.303c0.321-0.827,0.541-1.772,0.604-3.156c0.063-1.387,0.078-1.83,0.078-5.361c0-3.531-0.015-3.974-0.078-5.361c-0.063-1.384-0.283-2.329-0.604-3.156c-0.332-0.855-0.777-1.58-1.5-2.303c-0.723-0.723-1.448-1.167-2.303-1.5c-0.827-0.321-1.772-0.541-3.156-0.604C111.69,115.888,111.247,115.873,107.716,115.873"/><path style="fill:#FFFFFF;" d="M107.716,122.198c-3.687,0-6.677,2.989-6.677,6.677s2.989,6.677,6.677,6.677c3.688,0,6.677-2.989,6.677-6.677S111.403,122.198,107.716,122.198 M107.716,133.209c-2.394,0-4.334-1.941-4.334-4.334c0-2.394,1.94-4.334,4.334-4.334s4.334,1.94,4.334,4.334C112.05,131.268,110.109,133.209,107.716,133.209"/><path style="fill:#FFFFFF;" d="M116.217,121.934c0,0.862-0.699,1.56-1.56,1.56c-0.862,0-1.56-0.699-1.56-1.56c0-0.862,0.698-1.56,1.56-1.56C115.518,120.374,116.217,121.073,116.217,121.934"/></svg>
+      Instagram
+    </a>
+    <a href="https://cvdentus.com.br/" target="_blank" rel="noopener" class="footer-link-btn">🌐 Site</a>
+    <a href="https://www.tiktok.com/@cvdentus" target="_blank" rel="noopener" class="footer-link-btn">
+      <svg viewBox="310 25 62 70" aria-hidden="true"><linearGradient id="tt-grad" gradientUnits="userSpaceOnUse" x1="312.7815" y1="145.6315" x2="334.1855" y2="195.694" gradientTransform="matrix(0.9282 -0.3722 0.3722 0.9282 -19.1236 29.1963)"><stop offset="0" style="stop-color:#23004A"/><stop offset="0.9565" style="stop-color:#020003"/><stop offset="1" style="stop-color:#000000"/></linearGradient><path style="fill:url(#tt-grad);" d="M318.505,56.026c-4.471,6.651-6.112,15.828-1.943,22.673c2.898,4.759,8.149,7.7,13.565,9.008c5.416,1.308,11.062,1.174,16.632,1.033c8.171-0.207,17.577-1.039,22.293-7.715c4.328-6.127,2.721-14.536,0.35-21.653c-2.387-7.164-5.627-14.468-11.662-19.007C344.517,30.418,325.979,44.909,318.505,56.026z"/><path style="fill-rule:evenodd;clip-rule:evenodd;fill:#FF1753;" d="M347.95,61.272c1.731,1.237,3.852,1.965,6.142,1.965v-4.405c-0.434,0-0.866-0.045-1.29-0.135v3.468c-2.29,0-4.411-0.728-6.142-1.964v8.99c0,4.497-3.647,8.143-8.147,8.143c-1.679,0-3.239-0.507-4.535-1.377c1.479,1.512,3.542,2.45,5.825,2.45c4.5,0,8.147-3.646,8.147-8.143L347.95,61.272L347.95,61.272z M349.541,56.828c-0.885-0.966-1.466-2.215-1.591-3.595v-0.567h-1.223C347.035,54.421,348.085,55.919,349.541,56.828L349.541,56.828z M336.823,72.504c-0.494-0.648-0.761-1.44-0.76-2.255c0-2.057,1.668-3.725,3.727-3.725c0.383,0,0.765,0.059,1.13,0.174v-4.504c-0.427-0.059-0.858-0.083-1.289-0.074v3.506c-0.366-0.116-0.747-0.175-1.131-0.174c-2.058,0-3.727,1.668-3.727,3.725C334.773,70.631,335.607,71.891,336.823,72.504z"/><path style="fill-rule:evenodd;clip-rule:evenodd;fill:#FFFFFF;" d="M346.66,60.2c1.732,1.237,3.852,1.964,6.142,1.964v-3.468c-1.278-0.272-2.41-0.94-3.261-1.869c-1.457-0.908-2.506-2.407-2.814-4.161h-3.211v17.595c-0.007,2.051-1.673,3.712-3.727,3.712c-1.21,0-2.286-0.576-2.967-1.47c-1.216-0.614-2.05-1.873-2.05-3.327c0-2.057,1.668-3.725,3.727-3.725c0.394,0,0.774,0.061,1.131,0.174v-3.506c-4.42,0.091-7.975,3.701-7.975,8.141c0,2.216,0.885,4.225,2.322,5.693c1.296,0.87,2.857,1.377,4.535,1.377c4.499,0,8.147-3.646,8.147-8.143V60.2z"/><path style="fill-rule:evenodd;clip-rule:evenodd;fill:#00C9D0;" d="M352.802,58.696v-0.938c-1.153,0.002-2.283-0.321-3.261-0.931C350.407,57.775,351.547,58.429,352.802,58.696z M346.727,52.667c-0.029-0.168-0.052-0.336-0.068-0.506v-0.567h-4.433v17.595c-0.007,2.051-1.673,3.712-3.727,3.712c-0.603,0-1.172-0.143-1.677-0.397c0.681,0.893,1.756,1.47,2.967,1.47c2.054,0,3.72-1.661,3.727-3.712V52.667H346.727z M339.631,62.121v-0.998c-0.371-0.051-0.744-0.076-1.118-0.076c-4.5,0-8.147,3.646-8.147,8.142c0,2.819,1.434,5.304,3.612,6.766c-1.437-1.468-2.322-3.477-2.322-5.693C331.656,65.822,335.211,62.213,339.631,62.121L339.631,62.121z"/></svg>
+      TikTok
+    </a>
+    <a href="https://www.youtube.com/c/cvdentusdiamantes" target="_blank" rel="noopener" class="footer-link-btn">
+      <svg viewBox="254.849 162.068 47.427 47.427" aria-hidden="true"><path style="fill:#C3271A;" d="M293.807,209.495h-30.489c-4.677,0-8.469-3.792-8.469-8.469v-30.489c0-4.677,3.792-8.469,8.469-8.469h30.489c4.677,0,8.469,3.792,8.469,8.469v30.489C302.276,205.704,298.484,209.495,293.807,209.495z"/><path style="fill:#FFFFFF;" d="M296.747,176.587c-0.436-1.644-1.723-2.938-3.356-3.378c-2.96-0.798-14.83-0.798-14.83-0.798s-11.87,0-14.83,0.798c-1.633,0.439-2.919,1.734-3.356,3.378c-0.793,2.979-0.793,9.195-0.793,9.195s0,6.216,0.793,9.195c0.437,1.644,1.723,2.938,3.356,3.378c2.96,0.798,14.83,0.798,14.83,0.798s11.869,0,14.83-0.798c1.633-0.439,2.919-1.734,3.356-3.378c0.793-2.979,0.793-9.195,0.793-9.195S297.541,179.566,296.747,176.587z"/><polygon style="fill:#C3271A;" points="274.68,191.426 274.68,180.138 284.601,185.782"/></svg>
+      YouTube
+    </a>
+  </div>
+  <a href="https://catalogo-lupas-cvdentus.netlify.app/" target="_blank" rel="noopener" class="footer-catalog-btn">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 4v16h-12a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h12" /><path d="M19 16h-12a2 2 0 0 0 -2 2" /><path d="M9 8h6" /></svg>
+    Ver catálogo completo de lupas
+  </a>
+</footer>
+
+<script>
+// Each model: its GLB, eyeSpanLocal (barrel-to-barrel distance, sets scale),
+// and bridge (the nose-piece point, in the GLB's own local coordinates).
+//
+// Why `bridge` exists: every one of these GLBs comes out of Meshy with its
+// own arbitrary mesh origin — not consistently "the bridge", not consistently
+// anything. The old code positioned each model by placing THAT arbitrary
+// origin at a single shared BASE_POS, so the actual on-face landing point
+// (bridge vs. some other spot depending on how Meshy happened to center that
+// particular export) varied model to model in a way no shared BASE_POS could
+// correct for. That's what a single-model-tuned calibration can't fix by
+// itself: it was only ever validated against Ergo's own origin, not against
+// any other model's geometry.
+//
+// The fix: loadGlasses() recenters each model onto its own measured `bridge`
+// point before applying BASE_POS. That makes "the bridge" the one thing every
+// model shares at local (0,0,0), so a single BASE_POS + fine-tune now means
+// the same physical thing — "where the nose piece sits" — for all of them,
+// which is what makes the initial placement consistent across the whole
+// lineup (see the reference photo: bridge centered on the nose, symmetric,
+// each model's own real lens depth doing the rest). BASE_POS itself was
+// re-derived so Ergo — the one model actually confirmed correct on a live
+// camera — lands exactly where it did before; only the other five models'
+// placement should visibly change.
+//
+// Both eyeSpanLocal and bridge were measured the same way: vertices whose
+// NORMAL points toward the camera (front-facing surfaces), split left/right
+// of center for the barrels, and a narrow near-x=0 front-facing band for the
+// bridge. This is more robust than the old "frontmost Z point" method, which
+// picked up whichever part of the frame stuck out furthest — the flip-hinge
+// mechanism instead of the lenses, on the Galileu Flip mesh — rather than the
+// actual landmark.
+const MODELS = [
+  // ergo-ttl carries no `overrides` — it IS the shared `fine` baseline below,
+  // by construction (matches the user's own manual calibration for it).
+  { id: "ergo-ttl",     name: "Ergo",     tag: "TTL · Fixa", thumb: "assets/ref-ergo-ttl.png",     glb: "assets/lupa-ergo-3d.glb",         eyeSpanLocal: Math.hypot(0.38818-(-0.38830), -0.16663-(-0.16699)), bridge: [-0.00326, 0.14813, 0.49455] },
+  // ERGO_FLIP_3d_J04_BLACK.glb (~82MB, 1.24M verts) — heavier than the fixed Ergo (~12MB).
+  { id: "ergo-flip",    name: "Ergo",     tag: "Flip-up",     thumb: "assets/ref-ergo-flip.png",    glb: "assets/lupa-ergo-flip-3d.glb",    eyeSpanLocal: Math.hypot(0.35979-(-0.36142), -0.18742-(-0.18831)), bridge: [0.00015, 0.20509, 0.53790], overrides: { scale: 1.68, x: -5, y: 34, z: 39 } },
+  // Scale, take two: the frontmost-Z method first picked this mesh's flip-
+  // hinge instead of its lenses (~1.65x too big). The normal-direction method
+  // that replaced it was more stable across thresholds, but still measured a
+  // barrel span that rendered ~34% too wide — confirmed by comparing this
+  // model's rendered width against Jeeliz's own occluder head shape and
+  // against Ergo TTL (the one model actually confirmed correct on a live
+  // camera) at the same reference scale, rather than trusting either vertex
+  // heuristic on faith. eyeSpanLocal below is back-solved from that
+  // comparison, not from vertex clustering, and lands within 0.01% of Ergo
+  // TTL's own width-to-head-model ratio.
+  // overrides below: every model was manually dialed in by the user, one by
+  // one, live on camera — each keeps its own scale/height/depth/lateral
+  // rather than inheriting the shared baseline (which only ergo-ttl uses).
+  { id: "galileu-flip", name: "Galileu", tag: "Flip-up",     thumb: "assets/ref-galileu-flip.png", glb: "assets/lupa-galileu-flip-3d.glb", eyeSpanLocal: 0.7427, bridge: [-0.00135, 0.20213, 0.76905], overrides: { scale: 1.67, x: -7, y: 41, z: 34 } },
+  { id: "kepler-flip",  name: "Kepler",  tag: "Flip-up",     thumb: "assets/ref-kepler-flip.png", glb: "assets/lupa-kepler-flip-3d.glb", eyeSpanLocal: Math.hypot(0.25026-(-0.25362), -0.13179-(-0.13183)), bridge: [-0.00024, 0.14203, 0.52838], overrides: { scale: 1.38, x: -5, y: 34, z: 33 } },
+  { id: "kepler-ttl",   name: "Kepler",  tag: "TTL · Fixa",  thumb: "assets/ref-kepler-ttl.png", glb: "assets/lupa-kepler-ttl-3d.glb",   eyeSpanLocal: Math.hypot(0.31898-(-0.32018), -0.16344-(-0.16383)), bridge: [0.00493, 0.22198, 0.39136], overrides: { scale: 1.44, x: -6, y: 34, z: 33 } },
+  { id: "galileu-ttl",  name: "Galileu", tag: "TTL · Fixa",  thumb: "assets/ref-galileu-ttl.png", glb: "assets/lupa-galileu-ttl-3d.glb",  eyeSpanLocal: Math.hypot(0.35212-(-0.35370), -0.02264-(-0.02258)), bridge: [0.00331, 0.18175, 0.73484], overrides: { scale: 1.55, x: -5, y: 33, z: 29 } }
+];
+
+let THREECAMERA = null;
+let glassesObject = null;
+let occluderObject = null;
+let faceObjectRef = null;
+let modelIndex = 0;
+
+// Matches the slider defaults above (id="rScale/rY/rZ/rX" value attrs) — the
+// starting position/size that reads correctly on a face without any manual
+// adjustment, per the user's own tuning. The sliders still let a given
+// person nudge it further from here if needed.
+// Shared baseline — matches ergo-ttl's own manual calibration, since that
+// model carries no `overrides` of its own. Every other model was dialed in
+// individually by the user (see each model's `overrides` in MODELS above);
+// getEffectiveFine() merges baseline + override per model.
+const fine = { scale: 1.78, x: -7, y: 31, z: 29 };
+
+// Per-model fine-tune: the shared `fine` baseline, with that model's own
+// `overrides` (if any) layered on top. Used by both loadGlasses() and
+// applyFineTune() so a model with its own dialed-in values (Galileu Flip)
+// never gets silently pulled back to the shared numbers.
+function getEffectiveFine(model){
+  return Object.assign({}, fine, model.overrides || {});
+}
+// Re-derived alongside the bridge-recentering in loadGlasses(): this is the
+// value that makes Ergo's bridge land at the exact same spot it already did
+// under the old (non-recentered) math — Ergo is the one model actually
+// confirmed correct on a live camera, so its result shouldn't move. Every
+// other model's placement is now anchored the same way (see MODELS above)
+// and should visibly improve instead.
+const BASE_POS = [0, 0.105, 0.333];
+
+const els = {
+  models: document.getElementById('models'),
+  btnStart: document.getElementById('btnStart'),
+  btnSnap: document.getElementById('btnSnap'),
+  btnStop: document.getElementById('btnStop'),
+  stageEmpty: document.getElementById('stageEmpty'),
+  stageEmptyIcon: document.getElementById('stageEmptyIcon'),
+  scanFrame: document.getElementById('scanFrame'),
+  stageEmptyText: document.getElementById('stageEmptyText'),
+  calibToast: document.getElementById('calibToast'),
+  heroVideo: document.getElementById('heroVideo'),
+  heroVideoToggle: document.getElementById('heroVideoToggle')
+};
+
+// Hero video pause/play — required so the looping background video has a
+// user-operable pause control (WCAG 2.2.2: auto-updating content past 5s
+// needs a way to stop it; a decorative loop is not "essential").
+if(els.heroVideo && els.heroVideoToggle){
+  els.heroVideoToggle.addEventListener('click', () => {
+    if(els.heroVideo.paused){
+      els.heroVideo.play();
+      els.heroVideoToggle.textContent = '⏸';
+      els.heroVideoToggle.setAttribute('aria-pressed', 'false');
+      els.heroVideoToggle.setAttribute('aria-label', 'Pausar vídeo de fundo');
+    } else {
+      els.heroVideo.pause();
+      els.heroVideoToggle.textContent = '▶';
+      els.heroVideoToggle.setAttribute('aria-pressed', 'true');
+      els.heroVideoToggle.setAttribute('aria-label', 'Tocar vídeo de fundo');
+    }
+  });
+
+  // Respect prefers-reduced-motion: start on the poster frame instead of
+  // autoplaying the loop, using the exact same paused UI a manual click
+  // would produce — no separate code path to keep in sync.
+  if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+    els.heroVideo.pause();
+    els.heroVideoToggle.textContent = '▶';
+    els.heroVideoToggle.setAttribute('aria-pressed', 'true');
+    els.heroVideoToggle.setAttribute('aria-label', 'Tocar vídeo de fundo');
+  }
+}
+
+function renderModelPicker(){
+  els.models.innerHTML = "";
+  MODELS.forEach((m,i) => {
+    const btn = document.createElement("button");
+    btn.className = "model-btn" + (i === modelIndex ? " active" : "");
+    btn.innerHTML = `<img src="${m.thumb}" alt="${m.name} ${m.tag}" loading="lazy"><span class="name">${m.name}</span><span class="tag">${m.tag}</span>`;
+    btn.addEventListener("click", () => {
+      if(modelIndex === i) return;
+      modelIndex = i;
+      [...els.models.children].forEach((c,idx) => c.classList.toggle("active", idx===i));
+      if(faceObjectRef){ loadGlasses(MODELS[i]); beginCalibration(); }
+      viewerShowModel(MODELS[i]);
+      refreshFineTuneSliders();
+    });
+    els.models.appendChild(btn);
+  });
+}
+renderModelPicker();
+
+const SLIDER_DEFS = [["rScale","scale",100,"vScale","%"],["rX","x",1,"vX",""],["rY","y",1,"vY",""],["rZ","z",1,"vZ",""]];
+
+// Sliders always show/edit the CURRENT model's effective fine-tune (shared
+// baseline + that model's own overrides, if any) — not one global set of
+// numbers. Switching models refreshes what's shown; dragging a slider writes
+// into that model's own override rather than the shared baseline, so tuning
+// one model (Galileu Flip) never silently drags every other model with it.
+function refreshFineTuneSliders(){
+  const eff = getEffectiveFine(MODELS[modelIndex]);
+  SLIDER_DEFS.forEach(([id, key, div, valId, suffix]) => {
+    const val = eff[key] * div;
+    document.getElementById(id).value = val;
+    document.getElementById(valId).textContent = val + suffix;
+  });
+}
+
+SLIDER_DEFS.forEach(([id,key,div,valId,suffix]) => {
+  const el = document.getElementById(id);
+  const valEl = document.getElementById(valId);
+  el.addEventListener('input', () => {
+    const model = MODELS[modelIndex];
+    if(!model.overrides) model.overrides = {};
+    model.overrides[key] = Number(el.value)/div;
+    valEl.textContent = el.value + suffix;
+    applyFineTune();
+  });
+});
+
+function applyFineTune(){
+  if(!glassesObject) return;
+  const model = MODELS[modelIndex];
+  const eff = getEffectiveFine(model);
+  const baseScale = 0.30 / model.eyeSpanLocal;
+  glassesObject.scale.setScalar(baseScale * eff.scale);
+  glassesObject.position.set(BASE_POS[0] + eff.x*0.01, BASE_POS[1] + eff.y*0.01, BASE_POS[2] + eff.z*0.01);
+}
+
+/* =====================================================================
+   Pre-fit tracking lock: Jeeliz already hides the glasses object until its
+   own (hysteresis-smoothed) detector reports a face, so nothing appears
+   floating on an untracked frame. This layer adds two things on top of
+   that, without touching Jeeliz's tracking itself: a short hold — a face
+   must stay detected for CALIB_HOLD_MS before we call it "locked", so the
+   very first reveal isn't right on the hysteresis edge — and a "aligning
+   tracking" moment the user can actually see, so the wait reads as a
+   deliberate step instead of nothing happening. After that first lock, the
+   manual fine-tune sliders are exactly as before — this only affects how
+   the glasses arrive on screen, not where they end up.
+   ===================================================================== */
+const CALIB_HOLD_MS = 700;
+let calibrationConfirmed = false;
+let calibrationTimer = null;
+
+function showScanningUI(){
+  els.stageEmpty.style.display = 'flex';
+  els.stageEmpty.classList.add('scanning');
+  els.stageEmptyIcon.style.display = 'none';
+  els.scanFrame.style.display = 'block';
+  els.stageEmptyText.textContent = 'Rosto detectado — alinhando o rastreio...';
+}
+
+function showWaitingUI(){
+  els.stageEmpty.style.display = 'flex';
+  els.stageEmpty.classList.remove('scanning');
+  els.stageEmptyIcon.style.display = 'block';
+  els.scanFrame.style.display = 'none';
+  els.stageEmptyText.textContent = calibrationConfirmed
+    ? 'Centralize seu rosto na câmera.'
+    : 'Centralize seu rosto na câmera para iniciar o rastreio.';
+}
+
+// Checked every rendered frame (see callbackTrack) rather than only on
+// Jeeliz's own detected/undetected edge — an edge only fires when tracking
+// is gained or lost, but a model switch needs to re-run this same wait
+// while the face is already being continuously tracked (no edge to hook).
+function calibrationTick(){
+  const isDetected = JeelizThreeHelper.get_isDetected();
+  if(isDetected){
+    if(calibrationConfirmed){
+      els.stageEmpty.style.display = 'none';
+      return;
+    }
+    if(!calibrationTimer){
+      showScanningUI();
+      calibrationTimer = setTimeout(() => {
+        calibrationTimer = null;
+        calibrationConfirmed = true;
+        els.stageEmpty.style.display = 'none';
+        els.stageEmpty.classList.remove('scanning');
+        showCalibToast();
+      }, CALIB_HOLD_MS);
+    }
+  } else {
+    if(calibrationTimer){ clearTimeout(calibrationTimer); calibrationTimer = null; }
+    showWaitingUI();
+  }
+}
+
+// Re-arms the wait — called on first camera start AND every time the model
+// picker switches to a different model, so switching lupas re-triggers the
+// same "aligning tracking" moment instead of just swapping the mesh in
+// place. The manual fine-tune sliders are untouched either way.
+function beginCalibration(){
+  calibrationConfirmed = false;
+  if(calibrationTimer){ clearTimeout(calibrationTimer); calibrationTimer = null; }
+  // Reflect the ACTUAL current tracking state right away (face may already
+  // be in frame when the model is switched) instead of always flashing the
+  // "no face yet" wording for a frame.
+  calibrationTick();
+}
+
+let calibToastTimer = null;
+function showCalibToast(){
+  els.calibToast.classList.add('show');
+  clearTimeout(calibToastTimer);
+  calibToastTimer = setTimeout(() => els.calibToast.classList.remove('show'), 3200);
+}
+
+let envTexture = null;
+function ensureEnvMap(){
+  if(envTexture) return envTexture;
+  // These Meshy AI models come out fully metallic (metalness 1), which means
+  // what you actually see is mostly a reflection of the environment, tinted
+  // by the real photographed base color texture — with no envMap at all it
+  // reads as flat grey. jeeliz/envMap.jpg (Jeeliz's own face-filter demo
+  // asset) turned out to be a photo of an abandoned wooden room — fireplace,
+  // snowy window, desk — so every lupa was reflecting that scene's shapes
+  // and colors, which is exactly the "textura que não reconheço" per model.
+  // A flat vertical gradient turned out to be the wrong fix on its own: it's
+  // neutral (no more foreign objects reflected), but it has zero horizontal
+  // variation, so a curved metal barrel just shows one flat tone all the way
+  // around — the engraved detail / panel-line contrast that reflection is
+  // supposed to reveal has nothing to catch. Real product photography lights
+  // metal with 2-3 softboxes at different angles specifically so the shape
+  // and detail show up as highlight variation. This builds that: the same
+  // neutral vertical gradient as a base, plus a few soft, colorless "softbox"
+  // highlights placed around the horizontal — still nothing recognizable to
+  // reflect, just brighter and darker regions in different directions.
+  const W = 512, H = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0.00, '#dde1e8');
+  grad.addColorStop(0.42, '#9aa0af');
+  grad.addColorStop(0.55, '#666c7a');
+  grad.addColorStop(1.00, '#202228');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  function softbox(cx, cy, rx, ry, peakAlpha){
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(rx, ry));
+    g.addColorStop(0, 'rgba(255,255,255,' + peakAlpha + ')');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(rx / Math.max(rx, ry), ry / Math.max(rx, ry));
+    ctx.translate(-cx, -cy);
+    ctx.fillStyle = g;
+    ctx.fillRect(cx - rx, cy - ry, rx * 2, ry * 2);
+    ctx.restore();
+  }
+  // Key light (bright, upper-left-ish) and a softer fill on the other side —
+  // wraps the whole equirect so it's still there from any rotation.
+  softbox(W * 0.22, H * 0.30, W * 0.20, H * 0.28, 0.85);
+  softbox(W * 0.72, H * 0.42, W * 0.16, H * 0.22, 0.5);
+  softbox(W * 0.95, H * 0.25, W * 0.10, H * 0.16, 0.4);
+  softbox(W * 0.02, H * 0.25, W * 0.10, H * 0.16, 0.4); // wraps at the seam
+
+  envTexture = new THREE.CanvasTexture(canvas);
+  envTexture.mapping = THREE.EquirectangularReflectionMapping;
+  envTexture.magFilter = THREE.LinearFilter;
+  envTexture.minFilter = THREE.LinearMipMapLinearFilter;
+  return envTexture;
+}
+
+function prepareMaterials(root){
+  const envMap = ensureEnvMap();
+  root.traverse(function(child){
+    if(!child.isMesh || !child.material) return;
+    const mats = Array.isArray(child.material) ? child.material : [child.material];
+    mats.forEach(function(mat){
+      // These are metalnessFactor:1, roughnessFactor:1 as exported — leave
+      // that alone (it's Meshy's own authored value, and dialing it down
+      // washed the models out into a pale, flat clay-render instead of
+      // fixing anything). At metalness:1 basically 100% of what's visible is
+      // environment reflection tinted by the base color texture, so the
+      // detail (engravings, the "3.5X" plaque, panel-line contrast) reads
+      // through *reflection variation*, not direct diffuse lighting — which
+      // is why the envMap itself needs real variation across it, not a flat
+      // gradient (see ensureEnvMap).
+      mat.envMap = envMap;
+      mat.envMapIntensity = 1;
+      if(mat.map){ mat.map.encoding = THREE.sRGBEncoding; } // preserve the real photographed color
+      mat.needsUpdate = true;
+    });
+  });
+}
+
+// One download per GLB, shared by the face overlay and the 360° viewer.
+// Matters a lot here: the Galileu GLB alone is ~66MB.
+const modelCache = {};
+function loadModelScene(url, onProgress){
+  let entry = modelCache[url];
+  if(!entry){
+    entry = modelCache[url] = { listeners: [], promise: null };
+    entry.promise = new Promise(function(resolve, reject){
+      new THREE.GLTFLoader().load(url, function(gltf){
+        prepareMaterials(gltf.scene);
+        entry.listeners.length = 0;
+        resolve(gltf.scene);
+      }, function(xhr){
+        entry.listeners.forEach(function(fn){ fn(xhr); });
+      }, reject);
+    });
+  }
+  if(onProgress) entry.listeners.push(onProgress);
+  return entry.promise;
+}
+
+function loadGlasses(model){
+  if(glassesObject){
+    faceObjectRef.remove(glassesObject);
+    glassesObject = null;
+  }
+  const baseScale = 0.30 / model.eyeSpanLocal;
+  loadModelScene(model.glb).then(function(scene){
+    // The user may have picked another model while this one was downloading.
+    if(MODELS[modelIndex].glb !== model.glb) return;
+    const clonedScene = scene.clone();
+    // Recenter onto this model's own measured bridge point (see MODELS above)
+    // so local (0,0,0) — where BASE_POS below actually gets applied — means
+    // "the nose piece" for every model, not whatever arbitrary origin Meshy
+    // happened to export.
+    if(model.bridge){
+      clonedScene.position.set(-model.bridge[0], -model.bridge[1], -model.bridge[2]);
+    }
+    glassesObject = new THREE.Object3D();
+    glassesObject.add(clonedScene);
+    const eff = getEffectiveFine(model);
+    glassesObject.scale.setScalar(baseScale * eff.scale);
+    glassesObject.position.set(BASE_POS[0] + eff.x*0.01, BASE_POS[1] + eff.y*0.01, BASE_POS[2] + eff.z*0.01);
+    faceObjectRef.add(glassesObject);
+  }).catch(function(err){ console.error('GLB load error', err); });
+}
+
+function init_threeScene(spec){
+  // Second arg is Jeeliz's own edge-triggered (gained/lost) detection
+  // callback — its only real job here (auto-hiding the composite object
+  // until a face is seen) already happens internally regardless of what we
+  // pass. The actual pre-fit UI is driven per-frame by calibrationTick()
+  // from callbackTrack instead, since a model switch needs to re-run that
+  // wait with no detection edge to hook (see beginCalibration()).
+  const threeStuffs = JeelizThreeHelper.init(spec, function(){});
+  faceObjectRef = threeStuffs.faceObject;
+
+  // Three r112 defaults to LinearEncoding/NoToneMapping, which makes any
+  // sRGB texture (and the envMap reflections) render dull/dark compared to
+  // how the same GLB looks in Meshy's own viewer. Match a standard PBR
+  // display pipeline so the model's real colors/contrast come through.
+  threeStuffs.renderer.outputEncoding = THREE.sRGBEncoding;
+  threeStuffs.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  threeStuffs.renderer.toneMappingExposure = 1.1;
+
+  threeStuffs.scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+  const key = new THREE.DirectionalLight(0xffffff, 1.2);
+  key.position.set(0.5, 1, 1);
+  threeStuffs.scene.add(key);
+
+  // Occluder: Jeeliz's own generic head-shape asset, used exactly as their
+  // official glassesVTO demo does (see JeelizThreeHelper.create_threejsOccluder).
+  // Always colorWrite:false (invisible, depth-only) — no debug red mode.
+  occluderObject = JeelizThreeHelper.create_threejsOccluder('jeeliz/models3D/face.json', function(mesh){
+    mesh.rotation.set(0.3, 0, 0);
+    mesh.position.set(0, 0.03, -0.04);
+    mesh.scale.multiplyScalar(0.0084); // Jeeliz's own reference scale for their occluder asset
+    mesh.material.colorWrite = false;
+  });
+  faceObjectRef.add(occluderObject);
+
+  loadGlasses(MODELS[modelIndex]);
+  beginCalibration();
+
+  THREECAMERA = JeelizThreeHelper.create_camera();
+}
+
+/* =====================================================================
+   Camera contention fix: the face try-on (front camera) and the embedded
+   magnification simulator (rear camera) are two independent getUserMedia
+   calls on the same page. Several phone browsers only allow ONE active
+   camera stream per tab — if the face try-on's stream is still open when
+   the magnification iframe requests the rear camera, that second request
+   can silently fail ("no camera found"), even though the device clearly
+   has one. Releasing whichever camera isn't the one currently being used
+   — in both directions — is what makes both steps reliably usable in the
+   same session instead of only whichever one was opened first.
+   ===================================================================== */
+let cameraActive = false;
+
+function stopCamera(){
+  if(!cameraActive) return;
+  cameraActive = false;
+  JEELIZFACEFILTER.destroy().catch(function(){});
+  THREECAMERA = null;
+  faceObjectRef = null;
+  glassesObject = null;
+  occluderObject = null;
+  calibrationConfirmed = false;
+  if(calibrationTimer){ clearTimeout(calibrationTimer); calibrationTimer = null; }
+  els.btnStart.style.display = 'inline-flex';
+  els.btnStart.disabled = false;
+  els.btnStart.textContent = 'Ativar câmera';
+  els.btnSnap.style.display = 'none';
+  els.btnStop.style.display = 'none';
+  els.stageEmpty.style.display = 'flex';
+  els.stageEmpty.classList.remove('scanning');
+  els.stageEmptyIcon.style.display = 'block';
+  els.scanFrame.style.display = 'none';
+  els.stageEmptyText.textContent = 'Clique em "Ativar câmera" — o processamento é todo local, no seu navegador.';
+}
+
+function init_faceFilter(videoSettings){
+  // Explicit rather than relying on Jeeliz's own internal default: this is a
+  // face try-on, so the front/selfie camera is the only one that makes
+  // sense here (the rear camera can't see the user's own face).
+  videoSettings.facingMode = 'user';
+  JEELIZFACEFILTER.init({
+    followZRot: true,
+    canvasId: 'jeeFaceFilterCanvas',
+    NNCPath: 'jeeliz/neuralNets/',
+    videoSettings: videoSettings,
+    maxFacesDetected: 1,
+    callbackReady: function(errCode, spec){
+      if(errCode){
+        console.error('JEELIZFACEFILTER init error', errCode);
+        els.stageEmptyText.textContent = 'Não foi possível acessar a câmera (erro: ' + errCode + ').';
+        els.stageEmpty.style.display = 'flex';
+        els.btnStart.disabled = false;
+        els.btnStart.textContent = 'Ativar câmera';
+        return;
+      }
+      cameraActive = true;
+      init_threeScene(spec);
+      els.btnStart.style.display = 'none';
+      els.btnSnap.style.display = 'inline-flex';
+      els.btnStop.style.display = 'inline-flex';
+    },
+    callbackTrack: function(detectState){
+      JeelizThreeHelper.render(detectState, THREECAMERA);
+      calibrationTick();
+    }
+  });
+}
+
+els.btnStart.addEventListener('click', function(){
+  // Release the magnification simulator's rear-camera stream first if it's
+  // running — reloading its iframe to about:blank stops any getUserMedia
+  // stream inside it (navigating away from a document always stops its
+  // MediaStreams), freeing the camera hardware for the front camera below.
+  unloadMagnification();
+  els.btnStart.disabled = true;
+  els.btnStart.textContent = 'Carregando…';
+  JeelizResizer.size_canvas({
+    canvasId: 'jeeFaceFilterCanvas',
+    isFullScreen: false,
+    callback: function(isError, bestVideoSettings){
+      if(isError){
+        els.stageEmptyText.textContent = 'Não foi possível preparar a câmera.';
+        els.btnStart.disabled = false;
+        els.btnStart.textContent = 'Ativar câmera';
+        return;
+      }
+      init_faceFilter(bestVideoSettings);
+    }
+  });
+});
+
+els.btnSnap.addEventListener('click', function(){
+  const canvas = document.getElementById('jeeFaceFilterCanvas');
+  const a = document.createElement('a');
+  a.download = 'simulador-lupa-ergo-live.png';
+  a.href = canvas.toDataURL('image/png');
+  a.click();
+});
+
+els.btnStop.addEventListener('click', stopCamera);
+
+/* =====================================================================
+   Magnification simulator — a separate CVDentus app, embedded by iframe.
+   Click-to-load: it asks for camera permission on its own, so the iframe
+   only gets a real src once the visitor opts in, instead of every page
+   load silently pulling in a whole second app + triggering a prompt.
+   ===================================================================== */
+const magFrameEl = document.getElementById('magFrame');
+const magOverlayEl = document.getElementById('magOverlay');
+
+// Reload to about:blank to force its getUserMedia stream (rear camera) to
+// stop, then restore the click-to-load overlay so it can be started again.
+function unloadMagnification(){
+  if(magFrameEl.src && magFrameEl.src !== 'about:blank'){
+    magFrameEl.src = 'about:blank';
+  }
+  magOverlayEl.style.display = 'flex';
+}
+
+magOverlayEl.addEventListener('click', function(){
+  // Same contention issue in the other direction: release the front camera
+  // before requesting the rear one for the magnification simulator.
+  stopCamera();
+  if(magFrameEl.src === 'about:blank' || !magFrameEl.src){
+    magFrameEl.src = magFrameEl.dataset.src;
+  }
+  magOverlayEl.style.display = 'none';
+});
+
+/* =====================================================================
+   360° product viewer — its own WebGL context, independent of Jeeliz.
+   Renders only while scrolled into view so it never competes with the
+   live face-tracking loop for GPU time.
+   ===================================================================== */
+const vw = {
+  wrap:    document.getElementById('viewerWrap'),
+  canvas:  document.getElementById('viewerCanvas'),
+  overlay: document.getElementById('viewerOverlay'),
+  status:  document.getElementById('viewerStatus'),
+  hint:    document.getElementById('viewerHint'),
+  name:    document.getElementById('viewerName'),
+  tag:     document.getElementById('viewerTag'),
+  btnSpin: document.getElementById('btnSpin'),
+  btnReset:document.getElementById('btnResetView')
+};
+
+let vRenderer = null, vScene = null, vCamera = null, vControls = null;
+let vCurrent = null;              // Object3D currently on display
+let vHomeDistance = 1;            // camera distance chosen when framing the model
+let vVisible = false;             // is the card scrolled into view?
+let vStartedFirstLoad = false;
+
+function viewerInit(){
+  vRenderer = new THREE.WebGLRenderer({ canvas: vw.canvas, antialias:true, alpha:true });
+  // Capped at 1.5 (not 2) — on a 3x-DPR phone this alone roughly halves the
+  // fragment-shader work for the 360° viewer, which is pure win: the card is
+  // a few hundred px on screen, nobody can see the difference at that size.
+  vRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+  // Same color pipeline as the live scene, so the lupa looks identical in both.
+  vRenderer.outputEncoding = THREE.sRGBEncoding;
+  vRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+  vRenderer.toneMappingExposure = 1.1;
+
+  vScene = new THREE.Scene();
+  vScene.add(new THREE.AmbientLight(0xffffff, 1.2));
+  const key = new THREE.DirectionalLight(0xffffff, 1.2);
+  key.position.set(0.5, 1, 1);
+  vScene.add(key);
+  const rim = new THREE.DirectionalLight(0xffffff, 0.6);
+  rim.position.set(-1, 0.3, -1);
+  vScene.add(rim);
+
+  vCamera = new THREE.PerspectiveCamera(38, 1, 0.01, 200);
+
+  vControls = new THREE.OrbitControls(vCamera, vRenderer.domElement);
+  vControls.enableDamping = true;
+  vControls.dampingFactor = 0.08;
+  vControls.enablePan = false;
+  vControls.autoRotate = true;
+  vControls.autoRotateSpeed = 1.6;
+  vControls.addEventListener('start', function(){
+    vw.wrap.classList.add('dragging');
+    vw.hint.style.opacity = '0';
+  });
+  vControls.addEventListener('end', function(){ vw.wrap.classList.remove('dragging'); });
+
+  // Keyboard rotation — drag/swipe was the only way to spin the model before,
+  // which left keyboard-only visitors with no way to actually use this
+  // section beyond "Vista inicial". Arrow keys nudge the same spherical
+  // offset OrbitControls itself would produce from a drag.
+  vw.canvas.addEventListener('keydown', function(e){
+    if(!vControls || !vCurrent) return;
+    const step = 0.12;
+    let handled = true;
+    const offset = new THREE.Vector3().copy(vCamera.position).sub(vControls.target);
+    const spherical = new THREE.Spherical().setFromVector3(offset);
+    switch(e.key){
+      case 'ArrowLeft':  spherical.theta -= step; break;
+      case 'ArrowRight': spherical.theta += step; break;
+      case 'ArrowUp':    spherical.phi -= step; break;
+      case 'ArrowDown':  spherical.phi += step; break;
+      default: handled = false;
+    }
+    if(!handled) return;
+    e.preventDefault();
+    const EPS = 0.001;
+    spherical.phi = Math.max(EPS, Math.min(Math.PI - EPS, spherical.phi));
+    spherical.makeSafe();
+    vCamera.position.copy(vControls.target).add(new THREE.Vector3().setFromSpherical(spherical));
+    vw.hint.style.opacity = '0';
+    vControls.update();
+  });
+
+  // On touch the gesture is a horizontal swipe, and pinch-zoom belongs to the
+  // browser — say that instead of the mouse-wheel wording.
+  if(window.matchMedia && window.matchMedia('(pointer: coarse)').matches){
+    vw.hint.textContent = 'Deslize na horizontal para girar';
+  }
+
+  viewerResize();
+  if(window.ResizeObserver) new ResizeObserver(viewerResize).observe(vw.wrap);
+  else window.addEventListener('resize', viewerResize);
+
+  (function loop(){
+    requestAnimationFrame(loop);
+    if(!vVisible || !vCurrent) return;
+    vControls.update();
+    vRenderer.render(vScene, vCamera);
+  })();
+}
+
+function viewerResize(){
+  if(!vRenderer) return;
+  const w = vw.wrap.clientWidth, h = vw.wrap.clientHeight;
+  if(!w || !h) return;
+  vRenderer.setSize(w, h, false);
+  vCamera.aspect = w / h;
+  vCamera.updateProjectionMatrix();
+  // Keep the zoom limits and the "Vista inicial" distance correct for the new
+  // aspect (e.g. phone rotated), without yanking the camera the user is using.
+  viewerComputeDistance();
+}
+
+let vMetrics = null;  // { radiusXZ, halfHeight } of the framed model
+
+// Frames the model: recenter it on the origin, then pull the camera back far
+// enough that it fits. Uses the radius in the XZ plane rather than the full
+// box diagonal — the viewer auto-rotates, and radiusXZ is rotation-invariant,
+// so the framing stays correct through a full 360° instead of being sized for
+// a worst-case corner the model never actually presents.
+function viewerFrame(obj){
+  const box = new THREE.Box3().setFromObject(obj);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  obj.position.sub(center);
+
+  vMetrics = {
+    radiusXZ:   Math.hypot(size.x, size.z) / 2,
+    halfHeight: size.y / 2
+  };
+  viewerComputeDistance();
+
+  vControls.target.set(0, 0, 0);
+  viewerResetView();
+}
+
+function viewerComputeDistance(){
+  if(!vMetrics) return;
+  const halfFovV = vCamera.fov * Math.PI / 360;
+  const halfFovH = Math.atan(Math.tan(halfFovV) * vCamera.aspect);
+  const distH = vMetrics.radiusXZ / Math.sin(halfFovH);
+  const distV = vMetrics.halfHeight / Math.sin(halfFovV) + vMetrics.radiusXZ;
+  vHomeDistance = Math.max(distH, distV) * 1.06;
+  vControls.minDistance = vHomeDistance * 0.4;
+  vControls.maxDistance = vHomeDistance * 2.4;
+}
+
+function viewerResetView(){
+  if(!vCamera) return;
+  // Three-quarter product-shot angle, matching how the lupa reads best.
+  const d = vHomeDistance;
+  vCamera.position.set(d * 0.42, d * 0.20, d * 0.88);
+  vControls.target.set(0, 0, 0);
+  vControls.update();
+}
+
+function viewerShowModel(model){
+  if(!vRenderer) return;
+  vw.name.textContent = model.name;
+  vw.tag.textContent  = model.tag;
+
+  if(vCurrent){ vScene.remove(vCurrent); vCurrent = null; }
+  vw.overlay.style.display = 'flex';
+  vw.status.textContent = 'Carregando modelo 3D…';
+
+  loadModelScene(model.glb, function(xhr){
+    if(MODELS[modelIndex].glb !== model.glb) return;
+    const mb = (xhr.loaded / 1e6).toFixed(1);
+    vw.status.textContent = xhr.total
+      ? 'Carregando modelo 3D… ' + Math.round(xhr.loaded / xhr.total * 100) + '%'
+      : 'Carregando modelo 3D… ' + mb + ' MB';
+  }).then(function(scene){
+    if(MODELS[modelIndex].glb !== model.glb) return;   // user switched mid-download
+    vCurrent = new THREE.Object3D();
+    vCurrent.add(scene.clone());
+    vScene.add(vCurrent);
+    viewerFrame(vCurrent);
+    vw.overlay.style.display = 'none';
+    vw.hint.style.opacity = '1';
+  }).catch(function(err){
+    console.error('viewer GLB load error', err);
+    vw.status.textContent = 'Não foi possível carregar o modelo 3D.';
+  });
+}
+
+vw.btnSpin.addEventListener('click', function(){
+  if(!vControls) return;
+  vControls.autoRotate = !vControls.autoRotate;
+  vw.btnSpin.textContent = vControls.autoRotate ? '⏸ Pausar giro' : '▶ Girar sozinho';
+});
+vw.btnReset.addEventListener('click', viewerResetView);
+
+viewerInit();
+
+/* Lazy start: only download the GLB once the viewer is actually on screen —
+   the models run 11-63MB, not something to spend on a visitor who never
+   scrolls down. Visibility is measured directly from the element's rect
+   rather than trusting IntersectionObserver alone: if the observer never
+   fires (background tab, throttled compositing), the user would otherwise be
+   stuck on "role até aqui" forever with no way out. The observer is still
+   used as the cheap primary signal; scroll/resize is the safety net; and the
+   overlay itself is clickable as a manual last resort. */
+function viewerCheckVisible(){
+  const r = vw.wrap.getBoundingClientRect();
+  const vh = window.innerHeight || document.documentElement.clientHeight;
+  vVisible = r.bottom > 0 && r.top < vh && r.width > 0;
+  if(vVisible) viewerStartFirstLoad();
+}
+
+function viewerStartFirstLoad(){
+  if(vStartedFirstLoad) return;
+  vStartedFirstLoad = true;
+  viewerShowModel(MODELS[modelIndex]);
+}
+
+let vCheckQueued = false;
+function viewerQueueCheck(){
+  if(vCheckQueued) return;
+  vCheckQueued = true;
+  requestAnimationFrame(function(){ vCheckQueued = false; viewerCheckVisible(); });
+}
+
+if(window.IntersectionObserver){
+  new IntersectionObserver(viewerQueueCheck, { threshold: 0 }).observe(vw.wrap);
+}
+window.addEventListener('scroll', viewerQueueCheck, { passive:true });
+window.addEventListener('resize', viewerQueueCheck);
+vw.overlay.style.pointerEvents = 'auto';
+vw.overlay.style.cursor = 'pointer';
+vw.overlay.addEventListener('click', viewerStartFirstLoad);
+viewerCheckVisible();
+</script>
+
+</body>
+</html>

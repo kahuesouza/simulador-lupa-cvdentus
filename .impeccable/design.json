@@ -1,0 +1,214 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-25T00:00:00Z",
+  "title": "Design System: Simulador de Lupa CVDentus",
+  "extensions": {
+    "colorMeta": {
+      "signal-blue": {
+        "role": "primary",
+        "displayName": "CVD Signal Blue",
+        "canonical": "#2f5fc4",
+        "tonalRamp": ["#0d1a33", "#14285c", "#1c3785", "#2145a0", "#2f5fc4", "#5580d6", "#aec4ee", "#eaf1fc"]
+      },
+      "signal-blue-soft": {
+        "role": "primary-tint",
+        "displayName": "CVD Signal Blue Soft",
+        "canonical": "#eaf1fc",
+        "tonalRamp": ["#2f5fc4", "#5580d6", "#7fa0e3", "#aec4ee", "#c9dcf5", "#dfe9fa", "#eaf1fc", "#f6f9fe"]
+      },
+      "page-canvas": {
+        "role": "neutral",
+        "displayName": "Page Canvas",
+        "canonical": "#f4f5f7",
+        "tonalRamp": ["#c9cbd1", "#d8dade", "#e4e6ea", "#eceef1", "#f4f5f7", "#f8f9fa", "#fbfbfc", "#ffffff"]
+      },
+      "card-white": {
+        "role": "neutral",
+        "displayName": "Card White",
+        "canonical": "#ffffff",
+        "tonalRamp": ["#d9dade", "#e6e7ea", "#eff0f2", "#f5f6f7", "#fafafb", "#fcfcfd", "#fefefe", "#ffffff"]
+      },
+      "ink-primary": {
+        "role": "neutral",
+        "displayName": "Ink Primary",
+        "canonical": "#1c2130",
+        "tonalRamp": ["#0e1119", "#1c2130", "#2a3145", "#3d4457", "#4a5266", "#6b7280", "#9aa1b0", "#cdd2db"]
+      },
+      "ink-secondary": {
+        "role": "neutral",
+        "displayName": "Ink Secondary",
+        "canonical": "#3d4457",
+        "tonalRamp": ["#1c2130", "#2a3145", "#3d4457", "#4a5266", "#5e6678", "#7a8192", "#9aa1b0", "#cdd2db"]
+      },
+      "ink-tertiary": {
+        "role": "neutral",
+        "displayName": "Ink Tertiary",
+        "canonical": "#4a5266",
+        "tonalRamp": ["#2a3145", "#3d4457", "#4a5266", "#5e6678", "#7a8192", "#9aa1b0", "#c2c7d1", "#e2e5ea"]
+      },
+      "near-black": {
+        "role": "neutral-dark",
+        "displayName": "Near-Black (Hero Ink)",
+        "canonical": "#14161c",
+        "tonalRamp": ["#0a0b0e", "#14161c", "#1f222b", "#2c303c", "#454b5c", "#6b7280", "#a3aab8", "#e2e5ea"]
+      },
+      "hero-scrim-top": {
+        "role": "overlay",
+        "displayName": "Hero Scrim Top",
+        "canonical": "rgba(10,12,20,.30)",
+        "tonalRamp": []
+      },
+      "hero-scrim-bottom": {
+        "role": "overlay",
+        "displayName": "Hero Scrim Bottom",
+        "canonical": "rgba(8,10,18,.62)",
+        "tonalRamp": []
+      },
+      "camera-overlay-cool": {
+        "role": "overlay",
+        "displayName": "Camera Overlay Cool",
+        "canonical": "rgba(69,96,143,.30)",
+        "tonalRamp": []
+      },
+      "camera-overlay-dark": {
+        "role": "overlay",
+        "displayName": "Camera Overlay Dark",
+        "canonical": "rgba(13,19,32,.55)",
+        "tonalRamp": []
+      },
+      "camera-overlay-dark-strong": {
+        "role": "overlay",
+        "displayName": "Camera Overlay Dark Strong",
+        "canonical": "rgba(13,19,32,.75)",
+        "tonalRamp": []
+      },
+      "camera-chip-bg": {
+        "role": "overlay-chip",
+        "displayName": "Camera Chip Background",
+        "canonical": "rgba(13,19,32,.6)",
+        "tonalRamp": []
+      },
+      "pure-black": {
+        "role": "neutral-dark",
+        "displayName": "Pure Black",
+        "canonical": "#000000",
+        "tonalRamp": []
+      },
+      "toast-bg": {
+        "role": "overlay-chip",
+        "displayName": "Toast Background",
+        "canonical": "rgba(20,28,46,.96)",
+        "tonalRamp": []
+      },
+      "hero-title-shadow": {
+        "role": "overlay",
+        "displayName": "Hero Title Shadow",
+        "canonical": "rgba(0,0,0,.4)",
+        "tonalRamp": []
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Hero video card title only — the one Display-scale moment in the system." },
+      "headline": { "displayName": "Headline", "purpose": "Section titles below the hero, e.g. \"Vantagens de usar a lupa.\"" },
+      "title": { "displayName": "Title", "purpose": "Short confident labels: model chip names, advantage-item titles." },
+      "body": { "displayName": "Body", "purpose": "All supporting/paragraph copy across cards and footer." },
+      "label": { "displayName": "Label", "purpose": "Uppercase structural/wayfinding type: step-label headings." },
+      "micro": { "displayName": "Micro", "purpose": "The smallest tags/hints: model tags, 3D viewer tag and hint chips." }
+    },
+    "shadows": [
+      { "name": "shadow-ambient-sm", "value": "0 1px 2px rgba(16,24,40,.03)", "purpose": "Tight contact shadow paired with shadow-ambient-md on every resting card/chip." },
+      { "name": "shadow-ambient-md", "value": "0 14px 34px rgba(16,24,40,.07)", "purpose": "Wide, soft ambient spread — the system's default resting elevation for cards." },
+      { "name": "shadow-chip-hover", "value": "0 10px 24px rgba(16,24,40,.08)", "purpose": "Model chip / footer link hover state, paired with a 2px lift." },
+      { "name": "shadow-accent-glow", "value": "0 8px 20px rgba(47,95,196,.22)", "purpose": "Signal Blue buttons only — a color-tinted glow instead of neutral gray, reinforcing the accent." },
+      { "name": "shadow-catalog-glow", "value": "0 10px 22px rgba(47,95,196,.28)", "purpose": "Stronger accent glow for the footer catalog CTA." },
+      { "name": "shadow-hero-dark", "value": "0 12px 26px rgba(0,0,0,.35)", "purpose": "White CTA pill sitting on the dark hero video card." }
+    ],
+    "motion": [
+      { "name": "ease-standard", "value": "0.15s ease", "purpose": "Default transition for hover/press on buttons, chips, and toggles (color, background, box-shadow, transform)." },
+      { "name": "ease-toast", "value": "0.35s ease", "purpose": "Calibration toast fade/slide in and out." },
+      { "name": "ease-caret", "value": "0.2s ease", "purpose": "The \"Ajuste fino\" disclosure caret rotation." },
+      { "name": "active-press-scale", "value": "scale(.97)", "purpose": "Tactile press feedback on every button variant." },
+      { "name": "hover-lift", "value": "translateY(-2px)", "purpose": "Hover lift on cards, model chips, and footer link pills, paired with a deeper shadow." }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Signal Blue filled pill with a tinted glow shadow — the system's one high-commitment action (e.g. the footer catalog link).",
+      "html": "<a href=\"#\" class=\"ds-btn-primary\">Ver catálogo completo de lupas</a>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; gap: 8px; background: #2f5fc4; color: #fff; font-family: Montserrat, system-ui, sans-serif; font-weight: 600; font-size: 12.5px; letter-spacing: 0.1px; padding: 11px 22px; border-radius: 999px; text-decoration: none; box-shadow: 0 10px 22px rgba(47,95,196,.28); transition: filter 0.15s ease, transform 0.15s ease; } .ds-btn-primary:hover { filter: brightness(1.1); transform: translateY(-2px); } .ds-btn-primary:active { transform: scale(.97); } .ds-btn-primary:focus-visible { outline: 2px solid #2f5fc4; outline-offset: 2px; }"
+    },
+    {
+      "name": "Hero CTA Button",
+      "kind": "button",
+      "refersTo": "button-hero-cta",
+      "description": "White pill with near-black text — the inverse button reserved for sitting on the dark hero video card.",
+      "html": "<a href=\"#\" class=\"ds-btn-hero\">Simular agora <span aria-hidden=\"true\">→</span></a>",
+      "css": ".ds-btn-hero { display: inline-flex; align-items: center; gap: 8px; background: #fff; color: #14161c; font-family: Montserrat, system-ui, sans-serif; font-weight: 600; font-size: 13.5px; letter-spacing: 0.2px; padding: 13px 26px; border-radius: 999px; text-decoration: none; box-shadow: 0 12px 26px rgba(0,0,0,.35); transition: filter 0.15s ease, transform 0.15s ease; } .ds-btn-hero:hover { filter: brightness(.94); } .ds-btn-hero:active { transform: scale(.97); } .ds-btn-hero:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "White pill, no border, separation from shadow alone — secondary actions like \"Pausar giro\"/\"Vista inicial.\"",
+      "html": "<button class=\"ds-btn-ghost\">⏸ Pausar giro</button>",
+      "css": ".ds-btn-ghost { font-family: Montserrat, system-ui, sans-serif; font-weight: 600; font-size: 13px; letter-spacing: 0.2px; padding: 12px 22px; border-radius: 999px; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; background: #fff; color: #1c2130; box-shadow: 0 1px 2px rgba(16,24,40,.03), 0 6px 16px rgba(16,24,40,.06); transition: filter 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease; } .ds-btn-ghost:hover { color: #2f5fc4; box-shadow: 0 1px 2px rgba(16,24,40,.03), 0 8px 20px rgba(47,95,196,.14); } .ds-btn-ghost:active { transform: scale(.97); } .ds-btn-ghost:focus-visible { outline: 2px solid #2f5fc4; outline-offset: 2px; }"
+    },
+    {
+      "name": "Model Chip",
+      "kind": "card",
+      "refersTo": "model-chip",
+      "description": "Selectable product chip in the model picker — white at rest, Signal-Blue-Soft with a blue border when active. Holds a thumbnail, title-weight name, and an uppercase label-weight tag.",
+      "html": "<button class=\"ds-model-chip ds-model-chip--active\"><span class=\"ds-model-chip__name\">Ergo</span><span class=\"ds-model-chip__tag\">TTL · Fixa</span></button>",
+      "css": ".ds-model-chip { background: #fff; border: 1.5px solid transparent; border-radius: 18px; padding: 14px 10px 16px; cursor: pointer; color: #1c2130; font-family: Montserrat, system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(16,24,40,.03), 0 6px 18px rgba(16,24,40,.05); transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease; min-width: 130px; } .ds-model-chip:hover { transform: translateY(-2px); box-shadow: 0 1px 2px rgba(16,24,40,.03), 0 10px 24px rgba(16,24,40,.08); } .ds-model-chip--active { border-color: #2f5fc4; background: #eaf1fc; } .ds-model-chip__name { font-weight: 600; font-size: 14px; letter-spacing: 0.1px; } .ds-model-chip__tag { font-weight: 500; font-size: 10px; letter-spacing: 0.7px; text-transform: uppercase; color: #4a5266; }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "The base content container — flat white, no border, soft ambient shadow, 26px radius.",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card__step\"><span class=\"ds-card__num\">1</span>ESCOLHA O MODELO</div><p>Card content goes here.</p></div>",
+      "css": ".ds-card { background: #fff; border: none; border-radius: 26px; padding: 24px; box-shadow: 0 1px 2px rgba(16,24,40,.03), 0 14px 34px rgba(16,24,40,.07); font-family: Montserrat, system-ui, sans-serif; } .ds-card__step { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 1.4px; color: #3d4457; margin-bottom: 14px; } .ds-card__num { width: 23px; height: 23px; border-radius: 50%; background: #2f5fc4; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 700; flex-shrink: 0; }"
+    },
+    {
+      "name": "Hero Video Card",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "Signature component: a full-bleed looping muted video fills the card, a dark linear scrim guarantees text contrast, and Display-weight white title + Body subtitle + Hero CTA float centered on top.",
+      "html": "<div class=\"ds-hero-card\"><div class=\"ds-hero-card__media\"><video src=\"video.mp4\" autoplay loop muted playsinline></video></div><div class=\"ds-hero-card__scrim\"></div><div class=\"ds-hero-card__content\"><h1 class=\"ds-hero-card__title\">Simulador de Lupa CVDentus</h1><p class=\"ds-hero-card__sub\">Câmera em tempo real, Simulador de Magnificação e visualização 3D dos nossos modelos.</p><a href=\"#\" class=\"ds-btn-hero\">Simular agora →</a></div></div>",
+      "css": ".ds-hero-card { position: relative; text-align: center; border-radius: 40px; overflow: hidden; aspect-ratio: 3/4; background: #14161c; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px 26px; box-shadow: 0 1px 2px rgba(16,24,40,.03), 0 14px 34px rgba(16,24,40,.07); font-family: Montserrat, system-ui, sans-serif; } .ds-hero-card__media { position: absolute; inset: 0; z-index: 0; } .ds-hero-card__media video { width: 100%; height: 100%; object-fit: cover; display: block; } .ds-hero-card__scrim { position: absolute; inset: 0; z-index: 1; background: linear-gradient(180deg, rgba(10,12,20,.30) 0%, rgba(8,10,18,.62) 100%); } .ds-hero-card__content { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; } .ds-hero-card__title { font-weight: 700; font-size: clamp(26px,6.5vw,36px); line-height: 1.08; letter-spacing: -0.3px; margin: 0 0 10px; color: #fff; text-shadow: 0 2px 20px rgba(0,0,0,.4); } .ds-hero-card__sub { font-weight: 400; font-size: 14.5px; color: rgba(255,255,255,.88); line-height: 1.55; max-width: 360px; margin: 0 auto 26px; letter-spacing: 0.1px; text-shadow: 0 1px 12px rgba(0,0,0,.35); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Quiet Instrument",
+    "overview": "This is a clinical tool wearing a calm, confident, technical face — not a marketing showcase. The interface gets out of the way of two things: the visitor's own live camera feed, and the six real loupe products it renders on top of it. Everything not directly in service of that (page chrome, supporting copy, secondary actions) is deliberately quiet: flat white cards on a barely-there gray canvas, one accent color spent with visible restraint, generous whitespace, and type that leans light rather than loud. The one place the system allows itself real drama is the hero — a looping product video with a dark scrim and white display type — because that's the single moment the product is allowed to perform before the tool-like interface takes over.\n\nThis system was arrived at, not assumed: an earlier glassmorphism pass (frosted panels over a blurred photo) was built, tested, and explicitly rejected as too busy and low-contrast for a tool meant to be read quickly, often on a phone, often mid-sales-conversation. The generic \"sunglasses brand\" aesthetic — bold color blocking, loud gradients — was rejected for the same reason: this is optical/dental equipment, not eyewear fashion.",
+    "keyCharacteristics": [
+      "Flat white cards, zero borders, one soft diffuse shadow vocabulary — depth by shadow, never by glass or gradient panels.",
+      "A single accent color (Signal Blue) reserved for selection state, primary actions, and small functional accents — never used for large fills.",
+      "Solid dark chips (near-black or blue-tinted, white text) exclusively where content sits over live camera, video, or 3D render — the one place the system trades \"quiet\" for \"legible no matter what.\"",
+      "Montserrat at every weight from 300 to 800 is the only typeface in the system; hierarchy comes from weight and letter-spacing, not from mixing families."
+    ],
+    "rules": [
+      { "name": "The One Accent Rule", "body": "Signal Blue appears in small, functional doses only — a border, an icon chip, a button fill, a slider thumb. It never becomes a large background surface; that would break the \"quiet instrument\" premise.", "section": "colors" },
+      { "name": "The Solid-Chip Exception", "body": "Any text or control that sits directly on top of live camera video, the looping hero video, or the 3D canvas gets a solid dark chip (near-black or blue-tinted rgba over near-black) with white text — never a translucent/glass treatment — because the content underneath is unpredictable and legibility cannot be negotiable there.", "section": "colors" },
+      { "name": "The Weight-Not-Family Rule", "body": "Never introduce a second typeface for emphasis or hierarchy; reach for a heavier or lighter Montserrat weight and adjusted letter-spacing instead.", "section": "typography" },
+      { "name": "The Ambient-By-Default Rule", "body": "Shadows are soft, wide, and low-opacity at rest everywhere except the dark hero/camera/3D surfaces. A harder or tinted shadow is a deliberate signal (hover state, accent action), never a resting default.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do spend Signal Blue only on small, functional elements (borders, icon fills, button fills, thumbs) — never as a large background.",
+      "Do use a solid dark chip with white text for anything overlaid on live camera, video, or 3D canvas content.",
+      "Do keep every card and pill border-free, relying on the ambient shadow vocabulary for separation.",
+      "Do use flexbox with justify-content: center (not CSS Grid auto-fit) for any wrapping row of chips/cards, so an incomplete last row centers as a group.",
+      "Do carry hierarchy through Montserrat weight and letter-spacing, not additional typefaces.",
+      "Do render each social/platform logo in the footer in that platform's own official brand colors, not the system palette — an intentional, scoped exception to the color tokens above."
+    ],
+    "donts": [
+      "Don't reintroduce glassmorphism/translucent-over-photo panels — tested this session and rejected for busyness and poor contrast on a tool meant to be read quickly.",
+      "Don't use a generic eyewear/sunglasses-brand visual language (bold color blocking, loud gradients) — this is dental/optical equipment, not fashion eyewear.",
+      "Don't give any card or button a visible stroke border at rest; separation comes from shadow.",
+      "Don't let the Display-scale hero typography or the video/scrim treatment leak into the functional cards below the hero — that expressive register is reserved for the hero moment only."
+    ]
+  }
+}
